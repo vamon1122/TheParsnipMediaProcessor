@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30204.135
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParsnipVideoCompressor", "ParsnipVideoCompressor\ParsnipVideoCompressor.csproj", "{52691446-177C-41E7-B1BF-30A92CCA41D2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8C8908F5-8792-425C-A03F-6D406F5506E8}
+	EndGlobalSection
+EndGlobal

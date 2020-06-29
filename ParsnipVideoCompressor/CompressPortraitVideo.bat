@@ -1,0 +1,1 @@
+HandBrakeCLI --encoder x264 --encoder-preset medium --format av_mp4 --quality 22 --maxWidth 720 --optimize -i %1 -o %2
