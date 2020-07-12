@@ -57,17 +57,19 @@ namespace ParsnipVideoCompressor
                     foreach (var video in videos)
                     {
                         currentVideo++;
-                        var uncompressedFileName = video.VideoData.Original.Split('/').Last();
+                        var remoteUncompressedFileName = video.VideoData.Original.Split('/').Last();
+                        var localUncompressedFileName = remoteUncompressedFileName.Replace(' ', '_');
+                        var uncompressedDir = video.VideoData.Original;
                         var downloadAttempts = 0;
                         var uploadAttempts = 0;
                         var updateDirectoryAttempts = 0;
-                        Console.WriteLine($"Downloading {uncompressedFileName} ({currentVideo}/{numberOfVideos})");
+                        Console.WriteLine($"Downloading {remoteUncompressedFileName} ({currentVideo}/{numberOfVideos})");
 
                         if (TryDownload())
                         {
-                            Console.WriteLine($"Compressing {uncompressedFileName}");
+                            Console.WriteLine($"Compressing {remoteUncompressedFileName}");
                             var isLandscape = video.VideoData.XScale > video.VideoData.YScale;
-                            var compressedFileName = CompressVideo(uncompressedFileName, isLandscape);
+                            var compressedFileName = CompressVideo(localUncompressedFileName, isLandscape);
                             Console.WriteLine($"Uploading file called {compressedFileName}");
 
                             if (TryUpload(compressedFileName))
@@ -129,8 +131,8 @@ namespace ParsnipVideoCompressor
                         bool TryDownload()
                         {
                             downloadAttempts++;
-                            var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{RemoteOriginalsDir}/{uncompressedFileName}";
-                            var localFileDir = $"{LocalOriginalsDir}/{uncompressedFileName}";
+                            var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{uncompressedDir}";
+                            var localFileDir = $"{LocalOriginalsDir}\\{localUncompressedFileName}";
                             long expectedFileSize = GetFileSize();
                             try
                             {
@@ -234,7 +236,7 @@ namespace ParsnipVideoCompressor
 
         static string CompressVideo(string originalFileName, bool isLandscape)
         {
-            var compressedFileName = $"{originalFileName.Substring(0, originalFileName.Length - originalFileName.Split('.').Length - 1)}mp4";
+            var compressedFileName = $"{originalFileName.Substring(0, originalFileName.Length - originalFileName.Split('.').Length + 1)}mp4";
             Process proc = new Process();
             if(isLandscape)
                 proc.StartInfo.FileName = "CompressLandscapeVideo.bat";
