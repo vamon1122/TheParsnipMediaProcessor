@@ -28,9 +28,15 @@ namespace ParsnipVideoCompressor
         public static readonly string HandbrakeCLIDir = ConfigurationManager.AppSettings["HandbrakeCLIDir"];
         static void Main(string[] args)
         {
-            ProcessVideos();
+            try
+            {
+                ProcessVideos();
+            }
+            catch(Exception ex)
+            {
+                
+            }
             Console.WriteLine("Sleeping for 5 seconds...");
-            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
             Thread.Sleep(5000);
             Process.Start(AppDomain.CurrentDomain.FriendlyName);
             Environment.Exit(0);
@@ -58,7 +64,7 @@ namespace ParsnipVideoCompressor
                     {
                         currentVideo++;
                         var remoteUncompressedFileName = video.VideoData.Original.Split('/').Last();
-                        var localUncompressedFileName = remoteUncompressedFileName.Replace(' ', '_');
+                        var localUncompressedFileName = remoteUncompressedFileName.Replace(' ', '_').Replace("(", String.Empty).Replace(")", String.Empty).Replace(",", String.Empty);
                         var uncompressedDir = video.VideoData.Original;
                         var downloadAttempts = 0;
                         var uploadAttempts = 0;
@@ -236,7 +242,7 @@ namespace ParsnipVideoCompressor
 
         static string CompressVideo(string originalFileName, bool isLandscape)
         {
-            var compressedFileName = $"{originalFileName.Substring(0, originalFileName.Length - originalFileName.Split('.').Length + 1)}mp4";
+            var compressedFileName = $"{originalFileName.Substring(0, originalFileName.LastIndexOf('.'))}.mp4";
             Process proc = new Process();
             if(isLandscape)
                 proc.StartInfo.FileName = "CompressLandscapeVideo.bat";
