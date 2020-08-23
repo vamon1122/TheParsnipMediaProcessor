@@ -47,172 +47,162 @@ namespace ParsnipVideoCompressor
             Console.WriteLine("Checking for uncompressed videos...");
             //var FileList = GetFileList();
             var selectUncompressedAttempts = 0;
-            List<Video> videos = TrySelectUncompressed();
-            if (videos == null)
+            Video Video = TrySelectUncompressed();
+            if (Video == null)
             {
                 Console.WriteLine("Unable to retrieve uncompressed videos from the database");
             }
             else
             {
-                var numberOfVideos = videos.Count();
-                if (numberOfVideos > 0)
+                if (Video != null)
                 {
-                    Console.WriteLine($"Processing {numberOfVideos} video(s) in the queue...");
-                    Console.WriteLine();
-                    var currentVideo = 0;
-                    foreach (var video in videos)
+                    var remoteUncompressedFileName = Video.VideoData.Original.Split('/').Last();
+                    var localUncompressedFileName = remoteUncompressedFileName.Replace(' ', '_').Replace("(", String.Empty).Replace(")", String.Empty).Replace(",", String.Empty);
+                    var uncompressedDir = Video.VideoData.Original;
+                    var downloadAttempts = 0;
+                    var uploadAttempts = 0;
+                    var updateDirectoryAttempts = 0;
+
+                    if (TryDownload())
                     {
-                        currentVideo++;
-                        var remoteUncompressedFileName = video.VideoData.Original.Split('/').Last();
-                        var localUncompressedFileName = remoteUncompressedFileName.Replace(' ', '_').Replace("(", String.Empty).Replace(")", String.Empty).Replace(",", String.Empty);
-                        var uncompressedDir = video.VideoData.Original;
-                        var downloadAttempts = 0;
-                        var uploadAttempts = 0;
-                        var updateDirectoryAttempts = 0;
-                        Console.WriteLine($"Downloading {remoteUncompressedFileName} ({currentVideo}/{numberOfVideos})");
+                        Console.WriteLine($"Compressing {remoteUncompressedFileName}");
+                        var isLandscape = Video.VideoData.XScale > Video.VideoData.YScale;
+                        var compressedFileName = CompressVideo(localUncompressedFileName, isLandscape);
+                        Console.WriteLine($"Uploading file called {compressedFileName}");
 
-                        if (TryDownload())
+                        if (TryUpload(compressedFileName))
                         {
-                            Console.WriteLine($"Compressing {remoteUncompressedFileName}");
-                            var isLandscape = video.VideoData.XScale > video.VideoData.YScale;
-                            var compressedFileName = CompressVideo(localUncompressedFileName, isLandscape);
-                            Console.WriteLine($"Uploading file called {compressedFileName}");
-
-                            if (TryUpload(compressedFileName))
-                            {
-                                Console.WriteLine("Video was uploaded. Updating database...");
+                            Console.WriteLine("Video was uploaded. Updating database...");
                                 
-                                if(TryUpdateDirectories())
-                                    Console.WriteLine("Database was uploaded successfully!");
-                            }
+                            if(TryUpdateDirectories())
+                                Console.WriteLine("Database was uploaded successfully!");
                         }
-                        Console.WriteLine();
+                    }
+                    Console.WriteLine();
                         
-                        bool TryUpdateDirectories()
+                    bool TryUpdateDirectories()
+                    {
+                        updateDirectoryAttempts++;
+                        if (updateDirectoryAttempts < 4)
                         {
-                            updateDirectoryAttempts++;
-                            if (updateDirectoryAttempts < 4)
+                            try
                             {
-                                try
-                                {
-                                    video.UpdateDirectories();
-                                }
-                                catch
-                                {
-                                    TryUpdateDirectories();
-                                }
-                                return true;
+                                Video.UpdateDirectories();
+                            }
+                            catch
+                            {
+                                TryUpdateDirectories();
+                            }
+                            return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+
+                    bool TryUpload(string compressedFileName)
+                    {
+                        try
+                        {
+                            uploadAttempts++;
+                            Video.VideoData.Compressed = $"{RemoteCompressedDir}/{compressedFileName}";
+                            UploadFile(Video);
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"There was an error whilst uploading the file (attempt {uploadAttempts}): {ex}");
+                            if (uploadAttempts > 3)
+                            {
+                                Console.WriteLine("Upload failed after {attempts} attempts. Skipping this file");
+                                return false;
                             }
                             else
                             {
-                                return false;
-                            }
-                        }
-
-                        bool TryUpload(string compressedFileName)
-                        {
-                            try
-                            {
-                                uploadAttempts++;
-                                video.VideoData.Compressed = $"{RemoteCompressedDir}/{compressedFileName}";
-                                UploadFile(video);
-                                return true;
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"There was an error whilst uploading the file (attempt {uploadAttempts}): {ex}");
-                                if (uploadAttempts > 3)
-                                {
-                                    Console.WriteLine("Upload failed after {attempts} attempts. Skipping this file");
-                                    return false;
-                                }
-                                else
-                                {
-                                    Console.WriteLine("Upload failed after {attempts} attempt(s). Retrying...");
-                                    return TryUpload(compressedFileName);
-                                }
-                            }
-                        }
-
-                        bool TryDownload()
-                        {
-                            downloadAttempts++;
-                            var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{uncompressedDir}";
-                            var localFileDir = $"{LocalOriginalsDir}\\{localUncompressedFileName}";
-                            long expectedFileSize = GetFileSize();
-                            try
-                            {
-                                DownloadFile();
-                                return true;
-                            }
-                            catch (Exception ex)
-                            {
-                                //Sometimes, the file finishes downloading but an exception is thrown.
-                                //It's still useable so we try to convert anywam.
-                                if (ex.Message == "The underlying connection was closed: An unexpected error occurred on a receive.")
-                                {
-                                    long downloadedFileSize = new FileInfo(localFileDir).Length;
-                                    if (downloadedFileSize == expectedFileSize)
-                                    {
-                                        Debug.WriteLine($"There was an error whilst the file was downloading, but the downloaded file size {downloadedFileSize} " +
-                                            $"matched the expected file size {expectedFileSize}. Compression will still be attempted.");
-
-                                        return true;
-                                    }
-                                }
-                                Console.WriteLine($"There was an error whilst downloading the file (attempt {downloadAttempts}): {ex}");
-                                if (downloadAttempts > 3)
-                                {
-                                    Console.WriteLine("Download failed after {attempts} attempts. Skipping this file");
-                                    return false;
-                                }
-                                else
-                                {
-                                    Console.WriteLine("Download failed after {attempts} attempt(s). Retrying...");
-                                    return TryDownload();
-                                }
-                            }
-
-                            void DownloadFile()
-                            {
-                                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
-                                request.Method = WebRequestMethods.Ftp.DownloadFile;
-                                request.Credentials = FtpCredentials;
-                                FtpWebResponse response = (FtpWebResponse)request.GetResponse();
-                                try
-                                {
-                                    Stream responseStream = response.GetResponseStream();
-                                    using (var fileStream = File.Create(localFileDir))
-                                    {
-                                        responseStream.CopyTo(fileStream);
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    throw ex;
-                                }
-                                finally
-                                {
-                                    response.Close();
-                                }
-                                Console.WriteLine($"Download Complete, status: {response.StatusDescription.Replace(System.Environment.NewLine, string.Empty)}");
-                            }
-
-                            long GetFileSize()
-                            {
-                                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
-                                request.Method = WebRequestMethods.Ftp.GetFileSize;
-                                request.Credentials = FtpCredentials;
-
-                                FtpWebResponse response = (FtpWebResponse)request.GetResponse();
-                                long size = response.ContentLength;
-                                response.Close();
-
-                                return size;
+                                Console.WriteLine("Upload failed after {attempts} attempt(s). Retrying...");
+                                return TryUpload(compressedFileName);
                             }
                         }
                     }
-                    Console.WriteLine("Queue was processed successfully!");
+
+                    bool TryDownload()
+                    {
+                        downloadAttempts++;
+                        var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{uncompressedDir}";
+                        var localFileDir = $"{LocalOriginalsDir}\\{localUncompressedFileName}";
+                        long expectedFileSize = GetFileSize();
+                        try
+                        {
+                            DownloadFile();
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            //Sometimes, the file finishes downloading but an exception is thrown.
+                            //It's still useable so we try to convert anywam.
+                            if (ex.Message == "The underlying connection was closed: An unexpected error occurred on a receive.")
+                            {
+                                long downloadedFileSize = new FileInfo(localFileDir).Length;
+                                if (downloadedFileSize == expectedFileSize)
+                                {
+                                    Debug.WriteLine($"There was an error whilst the file was downloading, but the downloaded file size {downloadedFileSize} " +
+                                        $"matched the expected file size {expectedFileSize}. Compression will still be attempted.");
+
+                                    return true;
+                                }
+                            }
+                            Console.WriteLine($"There was an error whilst downloading the file (attempt {downloadAttempts}): {ex}");
+                            if (downloadAttempts > 3)
+                            {
+                                Console.WriteLine("Download failed after {attempts} attempts. Skipping this file");
+                                return false;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Download failed after {attempts} attempt(s). Retrying...");
+                                return TryDownload();
+                            }
+                        }
+
+                        void DownloadFile()
+                        {
+                            FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
+                            request.Method = WebRequestMethods.Ftp.DownloadFile;
+                            request.Credentials = FtpCredentials;
+                            FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+                            try
+                            {
+                                Stream responseStream = response.GetResponseStream();
+                                using (var fileStream = File.Create(localFileDir))
+                                {
+                                    responseStream.CopyTo(fileStream);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                throw ex;
+                            }
+                            finally
+                            {
+                                response.Close();
+                            }
+                            Console.WriteLine($"Download Complete, status: {response.StatusDescription.Replace(System.Environment.NewLine, string.Empty)}");
+                        }
+
+                        long GetFileSize()
+                        {
+                            FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
+                            request.Method = WebRequestMethods.Ftp.GetFileSize;
+                            request.Credentials = FtpCredentials;
+
+                            FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+                            long size = response.ContentLength;
+                            response.Close();
+
+                            return size;
+                        }
+                    }
                 }
                 else
                 {
@@ -221,22 +211,22 @@ namespace ParsnipVideoCompressor
             }
             
 
-            List<Video> TrySelectUncompressed()
+            Video TrySelectUncompressed()
             {
                 selectUncompressedAttempts++;
-                var uncompressedVideos = new List<Video>();
+                Video uncompressedVideo = null;
                 if (selectUncompressedAttempts < 4)
                 {
                     try
                     {
-                        uncompressedVideos = Video.SelectUncompressed();
+                        uncompressedVideo = Video.SelectOldestUncompressed();
                     }
                     catch
                     {
                         TrySelectUncompressed();
                     }
                 }
-                return uncompressedVideos;
+                return uncompressedVideo;
             }
         }
 
