@@ -1,0 +1,1 @@
+ffmpeg -f concat -i %1 -c copy -fflags +genpts %2

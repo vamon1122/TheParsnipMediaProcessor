@@ -1,0 +1,1 @@
+ffprobe -v error -show_entries stream=duration,width,height:stream_tags=rotate -of default=noprint_wrappers=1 %1
