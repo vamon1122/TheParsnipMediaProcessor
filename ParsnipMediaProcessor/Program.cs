@@ -30,11 +30,21 @@ namespace ParsnipMediaProcessor
         public static readonly string CompressedFileExtension = ".mp4";
         static void Main(string[] args)
         {
-            CompressVideo();
-            StitchVideoSequence();
-            Thread.Sleep(5000);
-            Process.Start(AppDomain.CurrentDomain.FriendlyName);
-            Environment.Exit(0);
+            try
+            {
+                CompressVideo();
+                StitchVideoSequence();
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+                Thread.Sleep(5000);
+                Process.Start(AppDomain.CurrentDomain.FriendlyName);
+                Environment.Exit(0);
+            }
         }
 
         static void CompressVideo()
@@ -45,17 +55,42 @@ namespace ParsnipMediaProcessor
             try
             {
                 Video = Video.SelectOldestUncompressed();
-                if (Video != null && Video.Id != null && Video.VideoData != null)
+                if (Video.Id != null)
                 {
-                    localOriginalFileDir = $"{LocalOriginalsDir}\\{Video.Id}{Video.VideoData.OriginalFileExtension}";
-                    if (TryDownload())
+                    try
                     {
-                        if (ScrapeLocalVideoData(Video, localOriginalFileDir))
+                        Video.Status = MediaStatus.Processing;
+                        Video.UpdateMetadata();
+                        if (Video != null && Video.Id != null && Video.VideoData != null)
                         {
-                            CompressVideo();
-                            UploadCompressedFile(Video);
-                            Video.Update();
+                            localOriginalFileDir = $"{LocalOriginalsDir}\\{Video.Id}{Video.VideoData.OriginalFileExtension}";
+                            if (TryDownload())
+                            {
+                                if (ScrapeLocalVideoData(Video, localOriginalFileDir))
+                                {
+                                    CompressVideo();
+                                    UploadCompressedFile(Video);
+                                    Video.Status = MediaStatus.Complete;
+                                    Video.UpdateMetadata();
+                                }
+                                else
+                                {
+                                    Video.Status = MediaStatus.Error;
+                                    Video.UpdateMetadata();
+                                }
+                            }
+                            else
+                            {
+                                Video.Status = MediaStatus.Error;
+                                Video.UpdateMetadata();
+                            }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        Video.Status = MediaStatus.Error;
+                        Video.UpdateMetadata();
+                        throw ex;
                     }
                 }
             }
