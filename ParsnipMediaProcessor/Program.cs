@@ -104,7 +104,7 @@ namespace ParsnipMediaProcessor
                     File.Delete(localOriginalFileDir);
 
                 if (Video != null && Video.Id != null && !string.IsNullOrWhiteSpace(Video.Id.ToString()))
-                    File.Delete($"{LocalCompressedDir}{Video.Id}{CompressedFileExtension}");
+                    File.Delete($"{LocalCompressedDir}\\{Video.Id}{CompressedFileExtension}");
             }
 
             bool TryDownload()
