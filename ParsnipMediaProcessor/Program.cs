@@ -156,6 +156,15 @@ namespace ParsnipMediaProcessor
 
                 if (VideoSequence != null && VideoSequence.Video != null && VideoSequence.Video.Id != null && VideoSequence.Video.VideoData != null && VideoSequence.SequencedVideos != null)
                 {
+                    int xScale = VideoSequence.SequencedVideos[0].VideoData.XScale;
+                    int yScale = VideoSequence.SequencedVideos[0].VideoData.YScale;
+                    foreach (var video in VideoSequence.SequencedVideos)
+                    {
+                        if (video.VideoData.XScale != xScale || video.VideoData.YScale != yScale)
+                            throw new InvalidOperationException("Cannot combine videos of different aspect ratios");
+                    }
+                    VideoSequence.Video.Status = MediaStatus.Processing;
+                    VideoSequence.Video.UpdateMetadata();
                     localStitchedFileDir = $"{RelativeLocalCompressedVideosDir}\\{VideoSequence.Video.Id}{CompressedFileExtension}";
                     if (SequencedVideosAreCompressed())
                     {
@@ -165,8 +174,10 @@ namespace ParsnipMediaProcessor
                         {
                             StitchVideo();
                             ScrapeLocalVideoData(VideoSequence.Video, localStitchedFileDir);
+                            GenerateAndUploadThumbnails(VideoSequence.Video, true);
                             UploadCompressedVideo(VideoSequence.Video);
-                            VideoSequence.Video.Update();
+                            VideoSequence.Video.Status = MediaStatus.Complete;
+                            VideoSequence.Video.UpdateMetadata();
                         }
                     }
                 }
@@ -174,6 +185,8 @@ namespace ParsnipMediaProcessor
             catch(Exception ex)
             {
                 Debug.WriteLine($"There was an exception whilst stitching a video: {ex}");
+                VideoSequence.Video.Status = MediaStatus.Error;
+                VideoSequence.Video.UpdateMetadata();
             }
             finally
             {
@@ -215,6 +228,8 @@ namespace ParsnipMediaProcessor
                     catch(Exception ex)
                     {
                         Debug.WriteLine($"There was an exception whilst downloading a sequenced file: {ex}");
+                        VideoSequence.Video.Status = MediaStatus.Error;
+                        VideoSequence.Video.UpdateMetadata();
                         return false;
                     }
                 }
@@ -254,7 +269,7 @@ namespace ParsnipMediaProcessor
                 Directory.CreateDirectory(RelativeLocalThumbnailsDir);
         }
 
-        static void GenerateAndUploadThumbnails(Video video)
+        static void GenerateAndUploadThumbnails(Video video, bool UseCompressedVideo = false)
         {
             var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
             var compressedDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Compressed";
@@ -302,16 +317,17 @@ namespace ParsnipMediaProcessor
 
                         System.Drawing.Image GenerateOriginal()
                         {
-                            var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
+                            var thumbnailDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
+                            var videoDir = UseCompressedVideo ? $"{RelativeLocalCompressedVideosDir}\\{video.Id}{video.VideoData.CompressedFileExtension}" : $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
                             Process process = new Process();
                             process.StartInfo.FileName = "GenerateThumbnail.bat";
-                            process.StartInfo.Arguments = $"{localDir} {RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension} {GenerateTime(timeStamp)}";
+                            process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {GenerateTime(timeStamp)}";
                             process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                             process.Start();
                             process.WaitForExit();
                             int exitCode = process.ExitCode;
                             process.Close();
-                            return Bitmap.FromFile(localDir);
+                            return Bitmap.FromFile(thumbnailDir);
                         }
 
                         void UpdateVideoThumbnailScale()
