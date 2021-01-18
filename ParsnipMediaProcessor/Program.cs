@@ -56,6 +56,7 @@ namespace ParsnipMediaProcessor
         {
             Video Video = null;
             string localOriginalFileDir = null;
+            string localCompressedFileDir = null;
 
             try
             {
@@ -69,12 +70,13 @@ namespace ParsnipMediaProcessor
                         if (Video != null && Video.Id != null && Video.VideoData != null)
                         {
                             localOriginalFileDir = $"{FullyQualifiedLocalOriginalVideosDir}\\{Video.Id}{Video.VideoData.OriginalFileExtension}";
+                            localCompressedFileDir = $"{FullyQualifiedLocalCompressedVideosDir}\\{Video.Id}.mp4";
                             if (TryDownload())
                             {
-                                if (ScrapeLocalVideoData(Video, localOriginalFileDir))
+                                GenerateAndUploadThumbnails(Video);
+                                CompressVideo();
+                                if (ScrapeLocalVideoData(Video, localCompressedFileDir))
                                 {
-                                    GenerateAndUploadThumbnails(Video);
-                                    CompressVideo();
                                     UploadCompressedVideo(Video);
                                     Video.Status = MediaStatus.Complete;
                                     Video.UpdateMetadata();
