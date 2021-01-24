@@ -232,6 +232,8 @@ namespace ParsnipMediaProcessor
                         foreach (var video in VideoSequence.SequencedVideos)
                         {
                             File.Delete($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}{CompressedFileExtension}");
+                            if(File.Exists($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}_output{CompressedFileExtension}"))
+                                File.Delete($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}_output{CompressedFileExtension}");
                         }
                     }
                 }
