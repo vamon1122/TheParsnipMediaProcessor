@@ -22,6 +22,8 @@ namespace ParsnipMediaProcessor
         private static readonly string FtpUrl = ConfigurationManager.AppSettings["FtpUrl"];
         private static readonly NetworkCredential FtpCredentials = new NetworkCredential(ConfigurationManager.AppSettings["FtpUsername"], ConfigurationManager.AppSettings["FtpPassword"]);
         private static readonly short NumberOfGeneratedThumbnails = Convert.ToInt16(ConfigurationManager.AppSettings["NumberOfGeneratedThumbnails"]);
+        private static readonly int MaxShortSide = Convert.ToInt16(ConfigurationManager.AppSettings["MaxShortSide"]);
+        private static readonly short CompressionLevel = Convert.ToInt16(ConfigurationManager.AppSettings["CompressionLevel"]);
         private static readonly string RemoteOriginalVideosDir = ConfigurationManager.AppSettings["RemoteOriginalsDir"];
         private static readonly string RemoteCompressedVideosDir = ConfigurationManager.AppSettings["RemoteCompressedDir"];
         private static readonly string RemoteThumbnailsDir = ConfigurationManager.AppSettings["RemoteThumbnailsDir"];
@@ -75,18 +77,12 @@ namespace ParsnipMediaProcessor
                             if (TryDownload())
                             {
                                 GenerateAndUploadThumbnails(Video);
-                                CompressVideo();
-                                if (ScrapeLocalVideoData(Video, localCompressedFileDir))
-                                {
-                                    UploadCompressedVideo(Video);
-                                    Video.Status = MediaStatus.Complete;
-                                    Video.UpdateMetadata();
-                                }
-                                else
-                                {
-                                    Video.Status = MediaStatus.Error;
-                                    Video.UpdateMetadata();
-                                }
+                                ScrapeLocalVideoData(Video, localOriginalFileDir);
+                                compressVideo(Video);
+                                ScrapeLocalVideoData(Video, localCompressedFileDir);
+                                UploadCompressedVideo(Video);
+                                Video.Status = MediaStatus.Complete;
+                                Video.UpdateMetadata();
                             }
                             else
                             {
@@ -129,21 +125,49 @@ namespace ParsnipMediaProcessor
                     return false;
                 }
             }
+        }
 
-            void CompressVideo()
+        static void compressVideo(Video video, string originalFileDir = null)
+        {
+            int originalScale = Media.GetAspectScale(video.VideoData.Width, video.VideoData.Height);
+            int compressedScale = default;
+            var compressedFileName = $"{RelativeLocalCompressedVideosDir}\\{video.Id}";
+
+            if (originalFileDir == null)
             {
-                Process process = new Process();
-                if (Video.VideoData.XScale > Video.VideoData.YScale)
-                    process.StartInfo.FileName = "CompressLandscapeVideo.bat";
-                else
-                    process.StartInfo.FileName = "CompressPortraitVideo.bat";
-                process.StartInfo.Arguments = $"{RelativeLocalOriginalVideosDir}\\{Video.Id}{Video.VideoData.OriginalFileExtension} {RelativeLocalCompressedVideosDir}\\{Video.Id}{CompressedFileExtension}";
-                process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                process.Start();
-                process.WaitForExit();
-                int exitCode = process.ExitCode;
-                process.Close();
+                originalFileDir = $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
             }
+            
+            if (video.VideoData.Width > video.VideoData.Height)
+            {
+                //Height is short side
+                for (int i = 1; i <= originalScale; i++)
+                {
+                    if (video.VideoData.YScale * i <= MaxShortSide)
+                        compressedScale = i;
+                }
+            }
+            else
+            {
+                //Width is short side
+                for (int i = 1; i <= originalScale; i++)
+                {
+                    if (video.VideoData.XScale * i <= MaxShortSide)
+                        compressedScale = i;
+                }
+            }
+
+            var compressedFileWidth = video.VideoData.XScale * compressedScale;
+            var compressedFileHeight = video.VideoData.YScale * compressedScale;
+
+            Process process = new Process();
+            process.StartInfo.FileName = "CompressAuto.bat";
+            process.StartInfo.Arguments = $"{originalFileDir} {compressedFileName} {CompressedFileExtension} {compressedFileWidth} {compressedFileHeight} {CompressionLevel}";
+            process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            process.Start();
+            process.WaitForExit();
+            int exitCode = process.ExitCode;
+            process.Close();
         }
 
         static void StitchVideoSequence()
@@ -159,11 +183,8 @@ namespace ParsnipMediaProcessor
                 {
                     int xScale = VideoSequence.SequencedVideos[0].VideoData.XScale;
                     int yScale = VideoSequence.SequencedVideos[0].VideoData.YScale;
-                    foreach (var video in VideoSequence.SequencedVideos)
-                    {
-                        if (video.VideoData.XScale != xScale || video.VideoData.YScale != yScale)
-                            throw new InvalidOperationException("Cannot combine videos of different aspect ratios");
-                    }
+                    var scaleVideo = new Video();
+                    
                     VideoSequence.Video.Status = MediaStatus.Processing;
                     VideoSequence.Video.UpdateMetadata();
                     localStitchedFileDir = $"{RelativeLocalCompressedVideosDir}\\{VideoSequence.Video.Id}{CompressedFileExtension}";
@@ -562,9 +583,6 @@ namespace ParsnipMediaProcessor
                 process.Start();
                 process.BeginOutputReadLine();
                 process.WaitForExit();
-
-                var width = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("width=")).First().Split('=').Last());
-                var height = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("height=")).First().Split('=').Last());
                 var duration = Convert.ToDecimal(output.ToString().Split(' ').Where(x => x.Contains("duration=")).First().Split('=').Last());
                 var rotateTag = "TAG:rotate";
                 int rotation = 0;
@@ -574,17 +592,18 @@ namespace ParsnipMediaProcessor
                 int scale;
                 if(rotation == 90 || rotation == 270)
                 {
-                    scale = Media.GetAspectScale(height, width);
-                    video.VideoData.XScale = Convert.ToInt16(height / scale);
-                    video.VideoData.YScale = Convert.ToInt16(width / scale);
+                    video.VideoData.Width = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("height=")).First().Split('=').Last());
+                    video.VideoData.Height = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("width=")).First().Split('=').Last());
                 }
                 else
                 {
-                    scale = Media.GetAspectScale(width, height);
-                    video.VideoData.XScale = Convert.ToInt16(width / scale);
-                    video.VideoData.YScale = Convert.ToInt16(height / scale);
+                    video.VideoData.Width = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("width=")).First().Split('=').Last());
+                    video.VideoData.Height = Convert.ToInt32(output.ToString().Split(' ').Where(x => x.Contains("height=")).First().Split('=').Last());
                 }
 
+                scale = Media.GetAspectScale(video.VideoData.Width, video.VideoData.Height);
+                video.VideoData.XScale = Convert.ToInt16(video.VideoData.Width / scale);
+                video.VideoData.YScale = Convert.ToInt16(video.VideoData.Height / scale);
                 video.VideoData.Duration = Convert.ToInt32(Math.Round(duration, 0));
 
                 return true;
