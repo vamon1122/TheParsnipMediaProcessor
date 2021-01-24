@@ -30,7 +30,8 @@ namespace ParsnipMediaProcessor
         private static readonly string RelativeLocalCompressedVideosDir = ConfigurationManager.AppSettings["RelativeLocalCompressedDir"];
         private static readonly string FullyQualifiedLocalOriginalVideosDir = $"{AppDomain.CurrentDomain.BaseDirectory}{RelativeLocalOriginalVideosDir}";
         private static readonly string FullyQualifiedLocalCompressedVideosDir = $"{AppDomain.CurrentDomain.BaseDirectory}{RelativeLocalCompressedVideosDir}";
-        public static readonly string HandbrakeCLIDir = ConfigurationManager.AppSettings["HandbrakeCLIDir"];
+        private static readonly string HandbrakeCLIDir = ConfigurationManager.AppSettings["HandbrakeCLIDir"];
+        private static readonly string LocalWebsiteDir = ConfigurationManager.AppSettings["LocalWebsiteDir"];
         public static readonly string CompressedFileExtension = ".mp4";
         static void Main(string[] args)
         {
@@ -40,7 +41,7 @@ namespace ParsnipMediaProcessor
                 CompressVideo();
                 StitchVideoSequence();
             }
-            catch
+            catch(Exception ex)
             {
 
             }
@@ -372,52 +373,81 @@ namespace ParsnipMediaProcessor
         }
         static long GetRemoteFileSize(string remoteFileDir)
         {
-            var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{remoteFileDir}";
-            FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
-            request.Method = WebRequestMethods.Ftp.GetFileSize;
-            request.Credentials = FtpCredentials;
+            long size;
+            if (string.IsNullOrEmpty(LocalWebsiteDir))
+            {
+                var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{remoteFileDir}";
+                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
+                request.Method = WebRequestMethods.Ftp.GetFileSize;
+                request.Credentials = FtpCredentials;
 
-            FtpWebResponse response = (FtpWebResponse)request.GetResponse();
-            long size = response.ContentLength;
-            response.Close();
+                FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+                size = response.ContentLength;
+                response.Close();
+            }
+            else
+            {
+                size = new FileInfo($"{LocalWebsiteDir}{remoteFileDir}").Length;
+            }
 
             return size;
         }
 
         static void DownloadFile(string remoteFileDir, string localFileDir)
         {
-            long expectedFileSize = GetRemoteFileSize(remoteFileDir);
-            var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{remoteFileDir}";
-            FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
-            request.Method = WebRequestMethods.Ftp.DownloadFile;
-            request.Credentials = FtpCredentials;
-            try
+            if (string.IsNullOrEmpty(LocalWebsiteDir))
+                DownloadFromFtp();
+            else
+                DownloadFromLocal();
+
+            void DownloadFromFtp()
             {
-                using (var response = (FtpWebResponse)request.GetResponse())
+                long expectedFileSize = GetRemoteFileSize(remoteFileDir);
+                var fileUrl = $"{FtpUrl}/{Website}/wwwroot/{remoteFileDir}";
+                FtpWebRequest request = (FtpWebRequest)WebRequest.Create(fileUrl);
+                request.Method = WebRequestMethods.Ftp.DownloadFile;
+                request.Credentials = FtpCredentials;
+                try
                 {
-                    using (Stream responseStream = response.GetResponseStream())
+                    using (var response = (FtpWebResponse)request.GetResponse())
                     {
-                        using (FileStream fileStream = File.Create(localFileDir))
+                        using (Stream responseStream = response.GetResponseStream())
                         {
-                            responseStream.CopyTo(fileStream);
+                            using (FileStream fileStream = File.Create(localFileDir))
+                            {
+                                responseStream.CopyTo(fileStream);
+                            }
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    long downloadedFileSize = new FileInfo(localFileDir).Length;
+                    if (downloadedFileSize != expectedFileSize)
+                        throw ex;
+                }
             }
-            catch (Exception ex)
+
+            void DownloadFromLocal()
             {
-                long downloadedFileSize = new FileInfo(localFileDir).Length;
-                if (downloadedFileSize != expectedFileSize)
-                    throw ex;
-                
+                File.Copy($"{LocalWebsiteDir}{remoteFileDir}", localFileDir);
             }
         }
 
         static void UploadThumbnail(VideoThumbnail videoThumbnail, string thumbnailIdentifier)
         {
-            FtpUpload("Originals", ".png");
-            FtpUpload("Compressed", ".jpg");
-            FtpUpload("Placeholders", ".jpg");
+            if (string.IsNullOrEmpty(LocalWebsiteDir))
+            {
+                FtpUpload("Originals", ".png");
+                FtpUpload("Compressed", ".jpg");
+                FtpUpload("Placeholders", ".jpg");
+            }
+            else
+            {
+                LocalUpload("Originals", ".png");
+                LocalUpload("Compressed", ".jpg");
+                LocalUpload("Placeholders", ".jpg");
+            }
 
             void FtpUpload(string folder, string extension)
             {
@@ -451,43 +481,62 @@ namespace ParsnipMediaProcessor
                     throw ex;
                 }
             }
+
+            void LocalUpload(string folder, string extension)
+            {
+                File.Copy($"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\{folder}\\{videoThumbnail.MediaId}_{thumbnailIdentifier}{extension}", $"{LocalWebsiteDir}{RemoteThumbnailsDir}/{folder}/{videoThumbnail.MediaId}_{thumbnailIdentifier}{extension}");
+            }
         }
 
         static void UploadCompressedVideo(Video video)
         {
             video.VideoData.CompressedFileDir = $"{RemoteCompressedVideosDir}/{video.Id}{CompressedFileExtension}";
             var localFileDir = $"{FullyQualifiedLocalCompressedVideosDir}\\{video.VideoData.CompressedFileName}";
-            long expectedFileSize = new FileInfo(localFileDir).Length;
-            var ftpClient = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{video.VideoData.CompressedFileDir}");
-            ftpClient.Credentials = FtpCredentials;
-            ftpClient.Method = System.Net.WebRequestMethods.Ftp.UploadFile;
-            ftpClient.UseBinary = true;
-            ftpClient.KeepAlive = true;
-            var fi = new FileInfo($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}{CompressedFileExtension}");
-            ftpClient.ContentLength = fi.Length;
-            byte[] buffer = new byte[4097];
-            int bytes = 0;
-            int total_bytes = (int)fi.Length;
-            try
+
+            if (string.IsNullOrEmpty(LocalWebsiteDir))
+                FtpUpload();
+            else
+                LocalUpload();
+
+            void FtpUpload()
             {
-                using (FileStream fs = fi.OpenRead())
+                long expectedFileSize = new FileInfo(localFileDir).Length;
+                var ftpClient = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{video.VideoData.CompressedFileDir}");
+                ftpClient.Credentials = FtpCredentials;
+                ftpClient.Method = System.Net.WebRequestMethods.Ftp.UploadFile;
+                ftpClient.UseBinary = true;
+                ftpClient.KeepAlive = true;
+                var fi = new FileInfo($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}{CompressedFileExtension}");
+                ftpClient.ContentLength = fi.Length;
+                byte[] buffer = new byte[4097];
+                int bytes = 0;
+                int total_bytes = (int)fi.Length;
+                try
                 {
-                    using (Stream rs = ftpClient.GetRequestStream())
+                    using (FileStream fs = fi.OpenRead())
                     {
-                        while (total_bytes > 0)
+                        using (Stream rs = ftpClient.GetRequestStream())
                         {
-                            bytes = fs.Read(buffer, 0, buffer.Length);
-                            rs.Write(buffer, 0, bytes);
-                            total_bytes -= bytes;
+                            while (total_bytes > 0)
+                            {
+                                bytes = fs.Read(buffer, 0, buffer.Length);
+                                rs.Write(buffer, 0, bytes);
+                                total_bytes -= bytes;
+                            }
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    long actualFileSize = GetRemoteFileSize(video.VideoData.CompressedFileDir);
+                    if (actualFileSize != expectedFileSize)
+                        throw ex;
+                }
             }
-            catch(Exception ex)
+
+            void LocalUpload()
             {
-                long actualFileSize = GetRemoteFileSize(video.VideoData.CompressedFileDir);
-                if (actualFileSize != expectedFileSize)
-                    throw ex;
+                File.Copy(localFileDir, $"{LocalWebsiteDir}{video.VideoData.CompressedFileDir}");
             }
         }
         
