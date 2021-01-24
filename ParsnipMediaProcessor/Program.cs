@@ -194,6 +194,15 @@ namespace ParsnipMediaProcessor
 
                         if (TryDownload())
                         {
+                            ScrapeLocalVideoData(scaleVideo, $"{RelativeLocalCompressedVideosDir}/{VideoSequence.SequencedVideos[0].VideoData.CompressedFileName}");
+                            foreach (var video in VideoSequence.SequencedVideos)
+                            {
+                                ScrapeLocalVideoData(video, $"{RelativeLocalCompressedVideosDir}/{video.VideoData.CompressedFileName}");
+                                if (video.VideoData.Width != scaleVideo.VideoData.Width || video.VideoData.Height != scaleVideo.VideoData.Height)
+                                {
+                                    throw new InvalidOperationException("Cannot combine videos of different aspect ratios");
+                                }
+                            }
                             StitchVideo();
                             ScrapeLocalVideoData(VideoSequence.Video, localStitchedFileDir);
                             GenerateAndUploadThumbnails(VideoSequence.Video, true);
