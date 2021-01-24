@@ -286,6 +286,8 @@ namespace ParsnipMediaProcessor
                     process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                     process.Start();
                     process.WaitForExit();
+                    int exitCode = process.ExitCode;
+                    process.Close();
                 }
                     
             }
