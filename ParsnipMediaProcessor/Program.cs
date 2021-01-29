@@ -76,8 +76,8 @@ namespace ParsnipMediaProcessor
                             localCompressedFileDir = $"{FullyQualifiedLocalCompressedVideosDir}\\{Video.Id}.mp4";
                             if (TryDownload())
                             {
-                                GenerateAndUploadThumbnails(Video);
                                 ScrapeLocalVideoData(Video, localOriginalFileDir);
+                                GenerateAndUploadThumbnails(Video);
                                 compressVideo(Video);
                                 ScrapeLocalVideoData(Video, localCompressedFileDir);
                                 UploadCompressedVideo(Video);
@@ -309,7 +309,7 @@ namespace ParsnipMediaProcessor
             var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
             var compressedDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Compressed";
             var placeholderDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Placeholders";
-            var segment = video.VideoData.Duration / NumberOfGeneratedThumbnails;
+            var segment = (double)video.VideoData.Duration / NumberOfGeneratedThumbnails;
 
             CreateLocalDirectories();
             GenerateAndUploadThumbnails();
