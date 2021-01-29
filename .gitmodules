@@ -1,0 +1,3 @@
+[submodule "TheParsnipData"]
+	path = TheParsnipData
+	url = git@github.com:vamon1122/TheParsnipData.git

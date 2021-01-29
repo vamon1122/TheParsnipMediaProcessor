@@ -5,6 +5,8 @@ VisualStudioVersion = 16.0.30204.135
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParsnipMediaProcessor", "ParsnipMediaProcessor\ParsnipMediaProcessor.csproj", "{52691446-177C-41E7-B1BF-30A92CCA41D2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParsnipData", "TheParsnipData\ParsnipData\ParsnipData.csproj", "{F0504054-EED6-4F6F-B35C-C684381181D3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{52691446-177C-41E7-B1BF-30A92CCA41D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F0504054-EED6-4F6F-B35C-C684381181D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F0504054-EED6-4F6F-B35C-C684381181D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F0504054-EED6-4F6F-B35C-C684381181D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F0504054-EED6-4F6F-B35C-C684381181D3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
