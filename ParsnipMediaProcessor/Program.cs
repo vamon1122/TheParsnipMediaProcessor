@@ -68,10 +68,14 @@ namespace ParsnipMediaProcessor
                 {
                     try
                     {
-                        Video.Status = MediaStatus.Processing;
-                        Video.UpdateMetadata();
                         if (Video != null && Video.Id != null && Video.VideoData != null)
                         {
+                            if (Video.Status.Equals(MediaStatus.Reprocess))
+                                Video.DeleteAllThumbnails();
+
+                            Video.Status = MediaStatus.Processing;
+                            Video.UpdateMetadata();
+
                             localOriginalFileDir = $"{FullyQualifiedLocalOriginalVideosDir}\\{Video.Id}{Video.VideoData.OriginalFileExtension}";
                             localCompressedFileDir = $"{FullyQualifiedLocalCompressedVideosDir}\\{Video.Id}.mp4";
                             if (TryDownload())
