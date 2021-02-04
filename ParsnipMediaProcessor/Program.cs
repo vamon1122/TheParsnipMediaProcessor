@@ -433,6 +433,9 @@ namespace ParsnipMediaProcessor
 
         static void DownloadFile(string remoteFileDir, string localFileDir)
         {
+            if (File.Exists(localFileDir))
+                File.Delete(localFileDir);
+
             if (string.IsNullOrEmpty(LocalWebsiteDir))
                 DownloadFromFtp();
             else
@@ -574,7 +577,12 @@ namespace ParsnipMediaProcessor
 
             void LocalUpload()
             {
-                File.Copy(localFileDir, $"{LocalWebsiteDir}{video.VideoData.CompressedFileDir}");
+                var destination = $"{LocalWebsiteDir}{video.VideoData.CompressedFileDir}";
+                
+                if (File.Exists(destination))
+                    File.Delete(destination);
+
+                File.Copy(localFileDir, destination);
             }
         }
         
