@@ -185,6 +185,9 @@ namespace ParsnipMediaProcessor
 
                 if (VideoSequence != null && VideoSequence.Video != null && VideoSequence.Video.Id != null && VideoSequence.Video.VideoData != null && VideoSequence.SequencedVideos != null)
                 {
+                    if (VideoSequence.Video.Status.Equals(MediaStatus.Reprocess))
+                        VideoSequence.Video.DeleteAllThumbnails();
+
                     int xScale = VideoSequence.SequencedVideos[0].VideoData.XScale;
                     int yScale = VideoSequence.SequencedVideos[0].VideoData.YScale;
                     var scaleVideo = new Video();
