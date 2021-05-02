@@ -147,7 +147,8 @@ namespace ParsnipMediaProcessor
                 //Height is short side
                 for (int i = 1; i <= originalScale; i++)
                 {
-                    if (video.VideoData.YScale * i <= MaxShortSide)
+                    var YScale = video.VideoData.YScale * i;
+                    if (YScale <= MaxShortSide && YScale % 2 == 0)
                         compressedScale = i;
                 }
             }
@@ -156,10 +157,14 @@ namespace ParsnipMediaProcessor
                 //Width is short side
                 for (int i = 1; i <= originalScale; i++)
                 {
-                    if (video.VideoData.XScale * i <= MaxShortSide)
+                    var XScale = video.VideoData.XScale * i;
+                    if (XScale <= MaxShortSide && XScale % 2 == 0)
                         compressedScale = i;
                 }
             }
+
+            if (compressedScale == 0)
+                compressedScale = originalScale;
 
             var compressedFileWidth = video.VideoData.XScale * compressedScale;
             var compressedFileHeight = video.VideoData.YScale * compressedScale;
