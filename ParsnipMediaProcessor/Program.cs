@@ -172,6 +172,11 @@ namespace ParsnipMediaProcessor
             process.WaitForExit();
             int exitCode = process.ExitCode;
             process.Close();
+
+            if(exitCode != 0)
+            {
+                throw new Exception($"ffmpeg compression process failed. Exit code: {exitCode}");
+            }
         }
 
         static void StitchVideoSequence()
