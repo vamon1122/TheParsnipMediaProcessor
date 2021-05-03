@@ -326,7 +326,7 @@ namespace ParsnipMediaProcessor
             var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
             var compressedDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Compressed";
             var placeholderDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Placeholders";
-            var segment = (double)video.VideoData.Duration / NumberOfGeneratedThumbnails;
+            var segment = new TimeSpan(video.VideoData.Duration.Ticks / NumberOfGeneratedThumbnails);
 
             CreateLocalDirectories();
             GenerateAndUploadThumbnails();
@@ -350,7 +350,7 @@ namespace ParsnipMediaProcessor
             {
                 for (int i = 0; i < NumberOfGeneratedThumbnails; i++)
                 {
-                    var timeStamp = TimeSpan.FromSeconds(segment * i);
+                    var timeStamp = new TimeSpan(segment.Ticks * i);
                     string thumbnailIdentifier = MediaId.NewMediaId().ToString();
                     var videoThumbnail = new VideoThumbnail();
                     System.Drawing.Image originalImage = null;
@@ -373,7 +373,7 @@ namespace ParsnipMediaProcessor
                             var videoDir = UseCompressedVideo ? $"{RelativeLocalCompressedVideosDir}\\{video.Id}{video.VideoData.CompressedFileExtension}" : $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
                             Process process = new Process();
                             process.StartInfo.FileName = "GenerateThumbnail.bat";
-                            process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {GenerateTime(timeStamp)}";
+                            process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {timeStamp}";
                             process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                             process.Start();
                             process.WaitForExit();
@@ -399,10 +399,6 @@ namespace ParsnipMediaProcessor
                             var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Placeholders\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.jpg";
                             Bitmap bitmap = Media.GenerateBitmapOfSize(originalImage, 250, 0);
                             Media.SaveBitmapWithCompression(bitmap, 15L, localDir);
-                        }
-                        string GenerateTime(TimeSpan timeSpan)
-                        {
-                            return $"{timeSpan.Hours}:{timeSpan.Minutes}:{timeSpan.Seconds}.{timeSpan.Milliseconds}";
                         }
                     }
                     void InitialiseThumbnail()
@@ -621,7 +617,6 @@ namespace ParsnipMediaProcessor
                 process.Start();
                 process.BeginOutputReadLine();
                 process.WaitForExit();
-                var duration = Convert.ToDecimal(output.ToString().Split(' ').Where(x => x.Contains("duration=")).First().Split('=').Last());
                 var rotateTag = "TAG:rotate";
                 int rotation = 0;
                 if (output.ToString().Contains(rotateTag))
@@ -642,7 +637,8 @@ namespace ParsnipMediaProcessor
                 scale = Media.GetAspectScale(video.VideoData.Width, video.VideoData.Height);
                 video.VideoData.XScale = Convert.ToInt16(video.VideoData.Width / scale);
                 video.VideoData.YScale = Convert.ToInt16(video.VideoData.Height / scale);
-                video.VideoData.Duration = Convert.ToInt32(Math.Round(duration, 0));
+                video.VideoData.Duration = TimeSpan.FromSeconds(Math.Floor(Convert.ToDouble(
+                            output.ToString().Split(' ').Where(x => x.Contains("duration=")).First().Split('=').Last()) * 1000) / 1000);
 
                 return true;
             }
