@@ -13,11 +13,21 @@ using System.Threading.Tasks;
 using ParsnipData;
 using ParsnipData.Media;
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace ParsnipMediaProcessor
 {
     class Program
     {
+        [DllImport("kernel32.dll")]
+        static extern IntPtr GetConsoleWindow();
+
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        const int SW_HIDE = 0;
+        const int SW_SHOW = 5;
+
         private static readonly string Website = ConfigurationManager.AppSettings["WebsiteUrl"];
         private static readonly string FtpUrl = ConfigurationManager.AppSettings["FtpUrl"];
         private static readonly NetworkCredential FtpCredentials = new NetworkCredential(ConfigurationManager.AppSettings["FtpUsername"], ConfigurationManager.AppSettings["FtpPassword"]);
@@ -34,11 +44,33 @@ namespace ParsnipMediaProcessor
         private static readonly string FullyQualifiedLocalCompressedVideosDir = $"{AppDomain.CurrentDomain.BaseDirectory}{RelativeLocalCompressedVideosDir}";
         private static readonly string HandbrakeCLIDir = ConfigurationManager.AppSettings["HandbrakeCLIDir"];
         private static readonly string LocalWebsiteDir = ConfigurationManager.AppSettings["LocalWebsiteDir"];
+        private static readonly string LocalBackupDir = ConfigurationManager.AppSettings["LocalBackupDir"];
         public static readonly string CompressedFileExtension = ".mp4";
+        private static bool HasLocalBackup { get => LocalBackupDir != null; }
         static void Main(string[] args)
         {
+            if (args != null)
+            {
+                try
+                {
+                    if(args.Contains("clean_videos"))
+                        CleanVideos();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+                finally
+                {
+                    Environment.Exit(0);
+                }
+            }
             try
             {
+                
+
+                var handle = GetConsoleWindow();
+                ShowWindow(handle, SW_HIDE);
                 CheckDirectories();
                 CompressVideo();
                 StitchVideoSequence();
@@ -649,7 +681,277 @@ namespace ParsnipMediaProcessor
             }
         }
 
-        static string[] GetFileList()
+        static void CleanVideos()
+        {
+            Console.WriteLine("Getting information...");
+
+            var databaseVideos = Video.Select();
+            var remoteOriginals = GetRemoteFileList(RemoteOriginalVideosDir);
+            var remoteCompressed = GetRemoteFileList(RemoteCompressedVideosDir);
+
+            string[] localBackupOriginals = null;
+            string[] localBackupCompressed = null;
+            if (HasLocalBackup)
+            {
+                localBackupOriginals = Directory.GetFiles($"{LocalBackupDir}\\{RemoteOriginalVideosDir.Replace('/', '\\')}").Select(Path.GetFileName).ToArray();
+                localBackupCompressed = Directory.GetFiles($"{LocalBackupDir}\\{RemoteCompressedVideosDir.Replace('/', '\\')}").Select(Path.GetFileName).ToArray();
+            }
+
+            var originalExistsInDatabaseNotRemote = new List<Video>();
+            var originalExistsInDatabaseWrongNameInRemote = new List<Tuple<Video, string>>();
+            var originalExistsInDatabaseNotBackup = new List<Video>();
+            var originalExistsInDatabaseWrongNameInBackup = new List<Tuple<Video, string>>();
+            var compressedExistsInDatabaseNotRemote = new List<Video>();
+            var compressedExistsInDatabaseWrongNameInRemote = new List<Tuple<Video, string>>();
+            var compressedExistsInDatabaseNotBackup = new List<Video>();
+            var compressedExistsInDatabaseWrongNameInBackup = new List<Tuple<Video, string>>();
+
+            foreach (var video in databaseVideos)
+            {
+                if (!string.IsNullOrWhiteSpace(video.VideoData.OriginalFileName) && !remoteOriginals.Contains(video.VideoData.OriginalFileName))
+                {
+                    if (remoteOriginals.ToList().ConvertAll(x => x.ToLower()).Contains(video.VideoData.OriginalFileName.ToLower()))
+                    {
+                        var remoteName = remoteOriginals.FirstOrDefault(x => x.ToLower() == video.VideoData.OriginalFileName.ToLower());
+                        originalExistsInDatabaseWrongNameInRemote.Add(new Tuple<Video, string>(video, remoteName));
+                    }
+                    else
+                        originalExistsInDatabaseNotRemote.Add(video);
+                }
+
+                if (HasLocalBackup && !string.IsNullOrWhiteSpace(video.VideoData.OriginalFileName) && !localBackupOriginals.Contains(video.VideoData.OriginalFileName) && !localBackupOriginals.ToList().ConvertAll(x => x.ToLower()).Contains(video.VideoData.OriginalFileName.ToLower()))
+                    originalExistsInDatabaseNotBackup.Add(video);
+
+                if (!string.IsNullOrWhiteSpace(video.VideoData.CompressedFileDir) && !remoteCompressed.Contains(video.VideoData.CompressedFileName))
+                    compressedExistsInDatabaseNotRemote.Add(video);
+
+                if (HasLocalBackup && !string.IsNullOrWhiteSpace(video.VideoData.CompressedFileName) && !localBackupCompressed.Contains(video.VideoData.CompressedFileName))
+                    compressedExistsInDatabaseNotBackup.Add(video);
+            }
+
+            var originalExistsInRemoteNotDatabase = new List<Video>();
+            long originalExistsInRemoteNotDatabaseBytes = 0;
+            foreach (var remoteOriginal in remoteOriginals)
+            {
+                var video = databaseVideos.FirstOrDefault(x => x.VideoData.OriginalFileName == remoteOriginal);
+                var videoCaseInsensitive = databaseVideos.FirstOrDefault(x => x.VideoData.OriginalFileName?.ToLower() == remoteOriginal.ToLower());
+                if (video == null && videoCaseInsensitive == null)
+                {
+                    var missingVideo = new Video();
+                    missingVideo.VideoData.OriginalFileDir = remoteOriginal;
+                    originalExistsInRemoteNotDatabaseBytes += GetRemoteFileSize($"{RemoteOriginalVideosDir}/{remoteOriginal}");
+                    originalExistsInRemoteNotDatabase.Add(missingVideo);
+                }
+            }
+
+            var compressedExistsInRemoteNotDatabase = new List<Video>();
+            long compressedExistsInRemoteNotDatabaseBytes = 0;
+            foreach (var remoteCompressedDir in remoteCompressed)
+            {
+                var video = databaseVideos.FirstOrDefault(x => x.VideoData.CompressedFileName == remoteCompressedDir);
+                
+                if (video == null)
+                {
+                    var missingVideo = new Video();
+                    missingVideo.VideoData.CompressedFileDir = remoteCompressedDir;
+                    compressedExistsInRemoteNotDatabaseBytes += GetRemoteFileSize($"{RemoteCompressedVideosDir}/{remoteCompressedDir}");
+                    compressedExistsInRemoteNotDatabase.Add(missingVideo);
+                }
+            }
+
+            var originalExistsInBackupNotDatabase = new List<Video>();
+            long originalExistsInBackupNotDatabaseBytes = 0;
+            if (HasLocalBackup)
+            {
+                foreach (var localBackupOriginalsDir in localBackupOriginals)
+                {
+                    var video = databaseVideos.FirstOrDefault(x => x.VideoData.OriginalFileName == localBackupOriginalsDir);
+                    var videoCaseInsensitive = databaseVideos.FirstOrDefault(x => x.VideoData.OriginalFileName?.ToLower() == localBackupOriginalsDir.ToLower());
+                    if (video == null && videoCaseInsensitive == null)
+                    {
+                        var missingVideo = new Video();
+                        missingVideo.VideoData.OriginalFileDir = $"{RemoteOriginalVideosDir}/{localBackupOriginalsDir}";
+                        originalExistsInBackupNotDatabaseBytes += new FileInfo($"{LocalBackupDir}\\{missingVideo.VideoData.OriginalFileDir.Replace('/', '\\')}").Length;
+                        originalExistsInBackupNotDatabase.Add(missingVideo);
+                    }
+                }
+            }
+
+            var compressedExistsInBackupNotDatabase = new List<Video>();
+            long compressedExistsInBackupNotDatabaseBytes = 0;
+            if (HasLocalBackup)
+            {
+                foreach (var localBackupCompressedDir in localBackupCompressed)
+                {
+                    var video = databaseVideos.FirstOrDefault(x => x.VideoData.CompressedFileName == localBackupCompressedDir);
+                    if (video == null)
+                    {
+                        var missingVideo = new Video();
+                        missingVideo.VideoData.CompressedFileDir = $"{RemoteCompressedVideosDir}/{localBackupCompressedDir}";
+                        compressedExistsInBackupNotDatabaseBytes += new FileInfo($"{LocalBackupDir}\\{missingVideo.VideoData.CompressedFileDir.Replace('/', '\\')}").Length;
+                        compressedExistsInBackupNotDatabase.Add(missingVideo);
+                    }
+                }
+            }
+
+            Console.WriteLine();
+            WriteTitle("Totals:");
+            Console.WriteLine($"There are {databaseVideos.Count()} video(s) in the database, of which {databaseVideos.Where(x => x.VideoData.OriginalFileDir != null).Count()} have an original file");
+            Console.WriteLine($"There are {remoteOriginals.Count()} original video(s) on the remote server");
+            Console.WriteLine($"There are {remoteCompressed.Count()} compressed video(s) on the remote server");
+            Console.WriteLine($"There are {localBackupOriginals.Count()} original video(s) in the local backup");
+            Console.WriteLine($"There are {localBackupCompressed.Count()} compressed video(s) in the local backup");
+            Console.WriteLine();
+
+            WriteTitle("Videos missing from remote:");
+            Console.WriteLine($"{originalExistsInDatabaseNotRemote.Count() + originalExistsInDatabaseWrongNameInRemote.Count()} database original video(s) are missing from the remote server");
+            Console.WriteLine($"{compressedExistsInDatabaseNotRemote.Count()} database compressed video(s) are missing from the remote server");
+            Console.WriteLine();
+            if (originalExistsInDatabaseNotRemote.Count() + compressedExistsInDatabaseNotRemote.Count() + originalExistsInDatabaseWrongNameInRemote.Count() > 0)
+            {
+                if (ConsoleEx.Decision($"Show {originalExistsInDatabaseNotRemote.Count() + compressedExistsInDatabaseNotRemote.Count() + originalExistsInDatabaseWrongNameInRemote.Count()} file name(s) of video(s) which are missing from the remote server?"))
+                {
+                    foreach (var video in originalExistsInDatabaseNotRemote)
+                    {
+                        Console.WriteLine(video.VideoData.OriginalFileDir);
+                    }
+
+                    foreach (var t in originalExistsInDatabaseWrongNameInRemote)
+                    {
+                        Console.Write($"{t.Item1.VideoData.OriginalFileDir} ~ ");
+                        ConsoleEx.WriteLine(t.Item2, ConsoleColor.Yellow);
+                        if(ConsoleEx.Decision("Amend original directory in database?"))
+                        {
+                            t.Item1.VideoData.OriginalFileDir = $"{RemoteOriginalVideosDir}/{t.Item2}";
+                            t.Item1.UpdateOriginalDir();
+                        }
+                    }
+
+                    foreach (var video in compressedExistsInDatabaseNotRemote)
+                    {
+                        Console.WriteLine(video.VideoData.CompressedFileDir);
+                    }
+                }
+
+                Console.WriteLine();
+            }
+
+            WriteTitle("Untracked videos in remote:");
+            Console.WriteLine($"{originalExistsInRemoteNotDatabase.Count()} remote original video(s) do not exist in the database ({originalExistsInRemoteNotDatabaseBytes / 1024 / 1024}mb)");
+            Console.WriteLine($"{compressedExistsInRemoteNotDatabase.Count()} remote compressed video(s) do not exist in the database ({compressedExistsInRemoteNotDatabaseBytes / 1024 / 1024}mb)");
+            Console.WriteLine();
+            if(originalExistsInRemoteNotDatabase.Count() + compressedExistsInRemoteNotDatabase.Count() > 0)
+            {
+                if (ConsoleEx.Decision($"Delete untracked remote videos and save {(originalExistsInRemoteNotDatabaseBytes + compressedExistsInRemoteNotDatabaseBytes) / 1024 / 1024}mb?"))
+                {
+                    foreach (var v in originalExistsInRemoteNotDatabase)
+                    {
+                        DeleteFromRemote($"{RemoteOriginalVideosDir}/{v.VideoData.OriginalFileDir}");
+                    }
+
+                    foreach (var v in compressedExistsInRemoteNotDatabase)
+                    {
+                        DeleteFromRemote($"{RemoteCompressedVideosDir}/{v.VideoData.CompressedFileDir}");
+                    }
+
+                    ConsoleEx.Success("Videos were deleted!");
+                }
+                else
+                    ConsoleEx.Success("No action taken :)");
+            }
+            else
+                ConsoleEx.Success("No videos to clean!");
+
+            Console.WriteLine();
+
+            if (HasLocalBackup)
+            {
+                WriteTitle("Videos missing from local backup:");
+                Console.WriteLine($"{originalExistsInDatabaseNotBackup.Count()} database original video(s) are missing from the local backup");
+                Console.WriteLine($"{compressedExistsInDatabaseNotBackup.Count()} database compressed video(s) are missing from the local backup");
+                Console.WriteLine();
+
+                if (originalExistsInDatabaseNotBackup.Count() + compressedExistsInDatabaseNotBackup.Count() > 0)
+                {
+                    if (ConsoleEx.Decision($"Show {originalExistsInDatabaseNotBackup.Count() + compressedExistsInDatabaseNotBackup.Count()} file name(s) of video(s) which are missing from the local backup?"))
+                    {
+                        foreach (var video in originalExistsInDatabaseNotBackup)
+                        {
+                            Console.WriteLine(video.VideoData.OriginalFileDir.Replace('/', '\\'));
+                        }
+
+                        foreach (var video in compressedExistsInDatabaseNotBackup)
+                        {
+                            Console.WriteLine(video.VideoData.CompressedFileDir.Replace('/', '\\'));
+                        }
+
+                        //foreach (var t in originalExistsInDatabaseWrongNameInRemote)
+                        //{
+                        //    Console.Write($"{t.Item2} ~ ");
+                        //    ConsoleEx.Write($"{t.Item1.VideoData.OriginalFileName}", ConsoleColor.Yellow);
+                        //    Console.WriteLine($" ({t.Item1.Id}{(string.IsNullOrEmpty(t.Item1.Title) ? string.Empty : $" - {t.Item1.Title}")}");
+                        //}
+                    }
+
+                    Console.WriteLine();
+                }
+
+                WriteTitle("Untracked videos in local backup:");
+                Console.WriteLine($"{originalExistsInBackupNotDatabase.Count()} local backup original video(s) do not exist in the database ({originalExistsInBackupNotDatabaseBytes / 1024 / 1024}mb)");
+                Console.WriteLine($"{compressedExistsInBackupNotDatabase.Count()} local backup compressed video(s) do not exist in the database ({compressedExistsInBackupNotDatabaseBytes / 1024 / 1024}mb)");
+                Console.WriteLine();
+                if (originalExistsInBackupNotDatabase.Count() + compressedExistsInBackupNotDatabase.Count() > 0)
+                {
+                    if (ConsoleEx.Decision($"Delete untracked videos from local backup and save {(originalExistsInBackupNotDatabaseBytes + compressedExistsInBackupNotDatabaseBytes) / 1024 / 1024}mb?"))
+                    {
+                        foreach (var v in originalExistsInBackupNotDatabase)
+                        {
+                            File.Delete($"{LocalBackupDir}\\{v.VideoData.OriginalFileDir.Replace('/', '\\')}");
+                        }
+
+                        foreach (var v in compressedExistsInBackupNotDatabase)
+                        {
+                            File.Delete($"{LocalBackupDir}\\{v.VideoData.CompressedFileDir.Replace('/', '\\')}");
+                        }
+
+                        ConsoleEx.Success("Videos were deleted!");
+                    }
+                    else
+                        ConsoleEx.Success("No action was taken :)");
+                }
+                else
+                    ConsoleEx.Success("No videos to clean!");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("WARNING: ");
+                Console.WriteLine("There was no backup to evaluate. Please add the \"LocalBackupDir\" key to the config file.");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
+            ConsoleEx.Success("Video clean process complete!");
+            Console.WriteLine("(Press enter to dismiss)");
+            Console.ReadLine();
+        }
+
+        static void WriteInfo(string header, string value)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write($"{header}:");
+            Console.ResetColor();
+            Console.WriteLine($" {value}");
+        }
+
+        static void WriteTitle(string title)
+        {
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine(title);
+            Console.ResetColor();
+        }
+
+        static string[] GetRemoteFileList(string remoteDir)
         {
             string[] downloadFiles;
             var result = new StringBuilder();
@@ -658,7 +960,7 @@ namespace ParsnipMediaProcessor
 
             try
             {
-                var request = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{RemoteOriginalVideosDir}");
+                var request = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{remoteDir}");
                 request.UseBinary = true;
                 request.Method = WebRequestMethods.Ftp.ListDirectory;
                 request.Credentials = FtpCredentials;
@@ -701,6 +1003,18 @@ namespace ParsnipMediaProcessor
                 }
                 downloadFiles = null;
                 return downloadFiles;
+            }
+        }
+    
+        static void DeleteFromRemote(string fileDir)
+        {
+            FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{fileDir}");
+            request.Method = WebRequestMethods.Ftp.DeleteFile;
+            request.Credentials = FtpCredentials;
+
+            using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
+            {
+                //return response.StatusDescription;
             }
         }
     }
