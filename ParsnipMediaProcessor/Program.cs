@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using ParsnipData;
 using ParsnipData.Media;
 using System.Drawing;
+using DotNetTools.SharpGrabber;
+using DotNetTools.SharpGrabber.Grabbed;
 
 namespace ParsnipMediaProcessor
 {
@@ -35,13 +37,14 @@ namespace ParsnipMediaProcessor
         private static readonly string HandbrakeCLIDir = ConfigurationManager.AppSettings["HandbrakeCLIDir"];
         private static readonly string LocalWebsiteDir = ConfigurationManager.AppSettings["LocalWebsiteDir"];
         public static readonly string CompressedFileExtension = ".mp4";
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             try
             {
                 CheckDirectories();
                 CompressVideo();
                 StitchVideoSequence();
+                await DownloadYoutube();
             }
             catch(Exception ex)
             {
@@ -84,7 +87,7 @@ namespace ParsnipMediaProcessor
                                 GenerateAndUploadThumbnails(Video);
                                 compressVideo(Video);
                                 ScrapeLocalVideoData(Video, localCompressedFileDir);
-                                UploadCompressedVideo(Video);
+                                UploadCompressedVideo(Video, $"{FullyQualifiedLocalCompressedVideosDir}\\{Video.VideoData.CompressedFileName}");
                                 Video.Status = MediaStatus.Complete;
                                 Video.UpdateMetadata();
                             }
@@ -223,7 +226,7 @@ namespace ParsnipMediaProcessor
                             StitchVideo();
                             ScrapeLocalVideoData(VideoSequence.Video, localStitchedFileDir);
                             GenerateAndUploadThumbnails(VideoSequence.Video, true);
-                            UploadCompressedVideo(VideoSequence.Video);
+                            UploadCompressedVideo(VideoSequence.Video, $"{FullyQualifiedLocalCompressedVideosDir}\\{VideoSequence.Video.VideoData.CompressedFileName}");
                             VideoSequence.Video.Status = MediaStatus.Complete;
                             VideoSequence.Video.UpdateMetadata();
                         }
@@ -352,55 +355,31 @@ namespace ParsnipMediaProcessor
                 {
                     var timeStamp = new TimeSpan(segment.Ticks * i);
                     string thumbnailIdentifier = MediaId.NewMediaId().ToString();
-                    var videoThumbnail = new VideoThumbnail();
+                    var videoThumbnail = new VideoThumbnail(video, RemoteThumbnailsDir, thumbnailIdentifier);
                     System.Drawing.Image originalImage = null;
 
                     InitialiseThumbnail();
-                    GenerateImages();
+                    GenerateImages(videoThumbnail, originalImage, thumbnailIdentifier);
                     UploadThumbnail(videoThumbnail, thumbnailIdentifier);
                     video.Thumbnails.Add(videoThumbnail);
 
-                    void GenerateImages()
+                    originalImage = GenerateOriginal();
+                    System.Drawing.Image GenerateOriginal()
                     {
-                        originalImage = GenerateOriginal();
-                        UpdateVideoThumbnailScale();
-                        GenerateCompressed();
-                        GeneratePlaceholder();
-
-                        System.Drawing.Image GenerateOriginal()
-                        {
-                            var thumbnailDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
-                            var videoDir = UseCompressedVideo ? $"{RelativeLocalCompressedVideosDir}\\{video.Id}{video.VideoData.CompressedFileExtension}" : $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
-                            Process process = new Process();
-                            process.StartInfo.FileName = "GenerateThumbnail.bat";
-                            process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {timeStamp}";
-                            process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                            process.Start();
-                            process.WaitForExit();
-                            int exitCode = process.ExitCode;
-                            process.Close();
-                            return Bitmap.FromFile(thumbnailDir);
-                        }
-
-                        void UpdateVideoThumbnailScale()
-                        {
-                            int scale = Media.GetAspectScale(originalImage.Width, originalImage.Height);
-                            videoThumbnail.XScale = Convert.ToInt16(originalImage.Width / scale);
-                            videoThumbnail.YScale = Convert.ToInt16(originalImage.Height / scale);
-                        }
-                        void GenerateCompressed()
-                        {
-                            var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Compressed\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.jpg";
-                            Bitmap bitmap = Media.GenerateBitmapOfSize(originalImage, 1280, 200);
-                            Media.SaveBitmapWithCompression(bitmap, 85L, localDir);
-                        }
-                        void GeneratePlaceholder()
-                        {
-                            var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Placeholders\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.jpg";
-                            Bitmap bitmap = Media.GenerateBitmapOfSize(originalImage, 250, 0);
-                            Media.SaveBitmapWithCompression(bitmap, 15L, localDir);
-                        }
+                        var thumbnailDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
+                        var videoDir = UseCompressedVideo ? $"{RelativeLocalCompressedVideosDir}\\{video.Id}{video.VideoData.CompressedFileExtension}" : $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
+                        Process process = new Process();
+                        process.StartInfo.FileName = "GenerateThumbnail.bat";
+                        process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {timeStamp}";
+                        process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+                        process.Start();
+                        process.WaitForExit();
+                        int exitCode = process.ExitCode;
+                        process.Close();
+                        return Bitmap.FromFile(thumbnailDir);
                     }
+
+                    
                     void InitialiseThumbnail()
                     {
                         videoThumbnail.MediaId = video.Id;
@@ -416,6 +395,35 @@ namespace ParsnipMediaProcessor
                 {
                     videoThumbnail.Insert();
                 }
+            }
+        }
+
+        static void GenerateImages(VideoThumbnail videoThumbnail, System.Drawing.Image originalImage, string thumbnailIdentifier)
+        {
+
+            UpdateVideoThumbnailScale();
+            GenerateCompressed();
+            GeneratePlaceholder();
+
+
+
+            void UpdateVideoThumbnailScale()
+            {
+                int scale = Media.GetAspectScale(originalImage.Width, originalImage.Height);
+                videoThumbnail.XScale = Convert.ToInt16(originalImage.Width / scale);
+                videoThumbnail.YScale = Convert.ToInt16(originalImage.Height / scale);
+            }
+            void GenerateCompressed()
+            {
+                var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Compressed\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.jpg";
+                Bitmap bitmap = Media.GenerateBitmapOfSize(originalImage, 1280, 200);
+                Media.SaveBitmapWithCompression(bitmap, 85L, localDir);
+            }
+            void GeneratePlaceholder()
+            {
+                var localDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Placeholders\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.jpg";
+                Bitmap bitmap = Media.GenerateBitmapOfSize(originalImage, 250, 0);
+                Media.SaveBitmapWithCompression(bitmap, 15L, localDir);
             }
         }
         static long GetRemoteFileSize(string remoteFileDir)
@@ -484,17 +492,17 @@ namespace ParsnipMediaProcessor
             }
         }
 
-        static void UploadThumbnail(VideoThumbnail videoThumbnail, string thumbnailIdentifier)
+        static void UploadThumbnail(VideoThumbnail videoThumbnail, string thumbnailIdentifier, string originalExt = ".png")
         {
             if (string.IsNullOrEmpty(LocalWebsiteDir))
             {
-                FtpUpload("Originals", ".png");
+                FtpUpload("Originals", originalExt);
                 FtpUpload("Compressed", ".jpg");
                 FtpUpload("Placeholders", ".jpg");
             }
             else
             {
-                LocalUpload("Originals", ".png");
+                LocalUpload("Originals", originalExt);
                 LocalUpload("Compressed", ".jpg");
                 LocalUpload("Placeholders", ".jpg");
             }
@@ -538,11 +546,20 @@ namespace ParsnipMediaProcessor
             }
         }
 
-        static void UploadCompressedVideo(Video video)
+        static void UploadCompressedVideo(Video video, string localFileDir)
         {
-            video.VideoData.CompressedFileDir = $"{RemoteCompressedVideosDir}/{video.Id}{CompressedFileExtension}";
-            var localFileDir = $"{FullyQualifiedLocalCompressedVideosDir}\\{video.VideoData.CompressedFileName}";
+            video.VideoData.CompressedFileDir = $"{RemoteCompressedVideosDir}/{video.Id}.{localFileDir.Split('.').Last()}";
+            UploadVideo(localFileDir, video.VideoData.CompressedFileDir);
+        }
 
+        static void UploadOriginalVideo(Video video, string localFileDir)
+        {
+            video.VideoData.OriginalFileDir = $"{RemoteOriginalVideosDir}/{video.Id}.{localFileDir.Split('.').Last()}";
+            UploadVideo(localFileDir, video.VideoData.OriginalFileDir);
+        }
+
+        static void UploadVideo(string fullyQualifiedLocalDir, string relativeRemoteDir)
+        {
             if (string.IsNullOrEmpty(LocalWebsiteDir))
                 FtpUpload();
             else
@@ -550,13 +567,13 @@ namespace ParsnipMediaProcessor
 
             void FtpUpload()
             {
-                long expectedFileSize = new FileInfo(localFileDir).Length;
-                var ftpClient = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{video.VideoData.CompressedFileDir}");
+                long expectedFileSize = new FileInfo(fullyQualifiedLocalDir).Length;
+                var ftpClient = (FtpWebRequest)WebRequest.Create($"{FtpUrl}/{Website}/wwwroot/{relativeRemoteDir}");
                 ftpClient.Credentials = FtpCredentials;
                 ftpClient.Method = System.Net.WebRequestMethods.Ftp.UploadFile;
                 ftpClient.UseBinary = true;
                 ftpClient.KeepAlive = true;
-                var fi = new FileInfo($"{FullyQualifiedLocalCompressedVideosDir}\\{video.Id}{CompressedFileExtension}");
+                var fi = new FileInfo($"{fullyQualifiedLocalDir}");
                 ftpClient.ContentLength = fi.Length;
                 byte[] buffer = new byte[4097];
                 int bytes = 0;
@@ -578,7 +595,7 @@ namespace ParsnipMediaProcessor
                 }
                 catch (Exception ex)
                 {
-                    long actualFileSize = GetRemoteFileSize(video.VideoData.CompressedFileDir);
+                    long actualFileSize = GetRemoteFileSize(relativeRemoteDir);
                     if (actualFileSize != expectedFileSize)
                         throw ex;
                 }
@@ -586,12 +603,12 @@ namespace ParsnipMediaProcessor
 
             void LocalUpload()
             {
-                var destination = $"{LocalWebsiteDir}{video.VideoData.CompressedFileDir}";
-                
+                var destination = $"{LocalWebsiteDir}{relativeRemoteDir}";
+
                 if (File.Exists(destination))
                     File.Delete(destination);
 
-                File.Copy(localFileDir, destination);
+                File.Copy(fullyQualifiedLocalDir, destination);
             }
         }
         
@@ -701,6 +718,88 @@ namespace ParsnipMediaProcessor
                 }
                 downloadFiles = null;
                 return downloadFiles;
+            }
+        }
+
+        static async Task DownloadYoutube()
+        {
+            var video = Youtube.SelectOldestUnprocessed();
+            if (video == null)
+                return;
+
+            try
+            {
+                video.Status = MediaStatus.Processing;
+                video.UpdateMetadata();
+
+                var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
+                var compressedDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Compressed";
+                var placeholderDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Placeholders";
+
+                if (Directory.Exists(originalsDir))
+                    Directory.Delete(originalsDir, true);
+                if (Directory.Exists(compressedDir))
+                    Directory.Delete(compressedDir, true);
+                if (Directory.Exists(placeholderDir))
+                    Directory.Delete(placeholderDir, true);
+                Directory.CreateDirectory(originalsDir);
+                Directory.CreateDirectory(compressedDir);
+                Directory.CreateDirectory(placeholderDir);
+
+                var grabber = GrabberBuilder.New()
+                .UseDefaultServices()
+                .AddYouTube()
+                .Build();
+
+                var result = await grabber.GrabAsync(new Uri($"https://www.youtube.com/watch?v={video.DataId}"));
+                var images = result.Resources<GrabbedImage>();
+                var videos = result.Resources<GrabbedMedia>();
+                var grabbedImageMaxRes = images.Single(x => x.ResourceUri.ToString().Contains("maxresdefault"));
+                var grabbedImageHQ = images.Single(x => x.ResourceUri.ToString().Contains("hqdefault"));
+                var grabbedMedia720 = videos.SingleOrDefault(x => (int)x.FormatId == 22);
+                var grabbedMedia360 = videos.SingleOrDefault(x => (int)x.FormatId == 18);
+                var localVideoDir = $"{FullyQualifiedLocalOriginalVideosDir}\\{video.Id}.mp4";
+                var thumbnailIdentifier = MediaId.NewMediaId().ToString();
+                var localThumbnailDir = $"{originalsDir}\\{video.Id}_{thumbnailIdentifier}.jpeg";
+
+                using (var client = new WebClient())
+                {
+                    if (grabbedMedia720 != null)
+                        client.DownloadFile(grabbedMedia720.ResourceUri, localVideoDir);
+                    else if (grabbedMedia360 != null)
+                        client.DownloadFile(grabbedMedia360.ResourceUri, localVideoDir);
+                    else
+                        throw new Exception();
+
+                    try
+                    {
+                        client.DownloadFile(grabbedImageMaxRes.ResourceUri, $"{localThumbnailDir}");
+                    }
+                    catch
+                    {
+                        client.DownloadFile(grabbedImageHQ.ResourceUri, $"{localThumbnailDir}");
+                    }
+                }
+
+                ScrapeLocalVideoData(video, localVideoDir);
+                var videoThumbnail = new VideoThumbnail(video, RemoteThumbnailsDir, thumbnailIdentifier);
+                GenerateImages(videoThumbnail, System.Drawing.Image.FromFile(localThumbnailDir), thumbnailIdentifier);
+                UploadThumbnail(videoThumbnail, thumbnailIdentifier, ".jpeg");
+                video.Thumbnails.Add(videoThumbnail);
+                videoThumbnail.Insert();
+                UploadCompressedVideo(video, localVideoDir);
+                video.UpdateMetadata();
+                UploadOriginalVideo(video, localVideoDir);
+                video.UpdateOriginalDir();
+                File.Delete(localVideoDir);
+
+                video.Status = MediaStatus.Complete;
+                video.UpdateMetadata();
+            }
+            catch
+            {
+                video.Status = MediaStatus.Error;
+                video.UpdateMetadata();
             }
         }
     }
