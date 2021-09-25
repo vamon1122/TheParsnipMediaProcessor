@@ -87,7 +87,7 @@ namespace ParsnipMediaProcessor
                                 GenerateAndUploadThumbnails(Video);
                                 compressVideo(Video);
                                 ScrapeLocalVideoData(Video, localCompressedFileDir);
-                                UploadCompressedVideo(Video, $"{FullyQualifiedLocalCompressedVideosDir}\\{Video.VideoData.CompressedFileName}");
+                                UploadCompressedVideo(Video, localCompressedFileDir);
                                 Video.Status = MediaStatus.Complete;
                                 Video.UpdateMetadata();
                             }
@@ -356,14 +356,13 @@ namespace ParsnipMediaProcessor
                     var timeStamp = new TimeSpan(segment.Ticks * i);
                     string thumbnailIdentifier = MediaId.NewMediaId().ToString();
                     var videoThumbnail = new VideoThumbnail(video, RemoteThumbnailsDir, thumbnailIdentifier);
-                    System.Drawing.Image originalImage = null;
+                    System.Drawing.Image originalImage = GenerateOriginal();
 
                     InitialiseThumbnail();
                     GenerateImages(videoThumbnail, originalImage, thumbnailIdentifier);
                     UploadThumbnail(videoThumbnail, thumbnailIdentifier);
                     video.Thumbnails.Add(videoThumbnail);
 
-                    originalImage = GenerateOriginal();
                     System.Drawing.Image GenerateOriginal()
                     {
                         var thumbnailDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
