@@ -786,10 +786,10 @@ namespace ParsnipMediaProcessor
                 UploadThumbnail(videoThumbnail, thumbnailIdentifier, ".jpeg");
                 video.Thumbnails.Add(videoThumbnail);
                 videoThumbnail.Insert();
-                UploadCompressedVideo(video, localVideoDir);
-                video.UpdateMetadata();
                 UploadOriginalVideo(video, localVideoDir);
                 video.UpdateOriginalDir();
+                video.VideoData.CompressedFileDir = video.VideoData.OriginalFileDir;
+                video.UpdateMetadata();
                 File.Delete(localVideoDir);
 
                 video.Status = MediaStatus.Complete;
