@@ -225,7 +225,7 @@ namespace ParsnipMediaProcessor
                             }
                             StitchVideo();
                             ScrapeLocalVideoData(VideoSequence.Video, localStitchedFileDir);
-                            GenerateAndUploadThumbnails(VideoSequence.Video, true);
+                            GenerateAndUploadThumbnails(VideoSequence.Video, localStitchedFileDir);
                             UploadCompressedVideo(VideoSequence.Video, $"{FullyQualifiedLocalCompressedVideosDir}\\{VideoSequence.Video.VideoData.CompressedFileName}");
                             VideoSequence.Video.Status = MediaStatus.Complete;
                             VideoSequence.Video.UpdateMetadata();
@@ -324,34 +324,30 @@ namespace ParsnipMediaProcessor
                 Directory.CreateDirectory(RelativeLocalThumbnailsDir);
         }
 
-        static void GenerateAndUploadThumbnails(Video video, bool UseCompressedVideo = false)
+        static void GenerateAndUploadThumbnails(Video video, string localVideoDir = null, int offset = 0)
         {
+            localVideoDir = localVideoDir ?? $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
             var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
             var compressedDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Compressed";
             var placeholderDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Placeholders";
-            var segment = new TimeSpan(video.VideoData.Duration.Ticks / NumberOfGeneratedThumbnails);
+            var numberOfGeneratedThumbnails = NumberOfGeneratedThumbnails - offset;
+            var segment = new TimeSpan(video.VideoData.Duration.Ticks / numberOfGeneratedThumbnails);
 
             CreateLocalDirectories();
             GenerateAndUploadThumbnails();
             InsertThumbnailData();
 
             void CreateLocalDirectories(){
-                if (Directory.Exists(originalsDir))
-                    Directory.Delete(originalsDir, true);
-
-                if (Directory.Exists(compressedDir))
-                    Directory.Delete(compressedDir, true);
-
-                if (Directory.Exists(placeholderDir))
-                    Directory.Delete(placeholderDir, true);
-
-                Directory.CreateDirectory(originalsDir);
-                Directory.CreateDirectory(compressedDir);
-                Directory.CreateDirectory(placeholderDir);
+                if (!Directory.Exists(originalsDir))
+                    Directory.CreateDirectory(originalsDir);
+                if (!Directory.Exists(compressedDir))
+                    Directory.CreateDirectory(compressedDir);
+                if (!Directory.Exists(placeholderDir))
+                    Directory.CreateDirectory(placeholderDir);
             }
             void GenerateAndUploadThumbnails()
             {
-                for (int i = 0; i < NumberOfGeneratedThumbnails; i++)
+                for (int i = 0; i < numberOfGeneratedThumbnails; i++)
                 {
                     var timeStamp = new TimeSpan(segment.Ticks * i);
                     string thumbnailIdentifier = MediaId.NewMediaId().ToString();
@@ -366,7 +362,7 @@ namespace ParsnipMediaProcessor
                     System.Drawing.Image GenerateOriginal()
                     {
                         var thumbnailDir = $"{RelativeLocalThumbnailsDir}\\{videoThumbnail.MediaId}\\AutoGen\\Originals\\{videoThumbnail.MediaId}_{thumbnailIdentifier}.png";
-                        var videoDir = UseCompressedVideo ? $"{RelativeLocalCompressedVideosDir}\\{video.Id}{video.VideoData.CompressedFileExtension}" : $"{RelativeLocalOriginalVideosDir}\\{video.Id}{video.VideoData.OriginalFileExtension}";
+                        var videoDir = localVideoDir;
                         Process process = new Process();
                         process.StartInfo.FileName = "GenerateThumbnail.bat";
                         process.StartInfo.Arguments = $"{thumbnailDir} {videoDir} {timeStamp}";
@@ -811,7 +807,7 @@ namespace ParsnipMediaProcessor
                 GenerateImages(videoThumbnail, System.Drawing.Image.FromFile(localThumbnailDir), thumbnailIdentifier);
                 UploadThumbnail(videoThumbnail, thumbnailIdentifier, ".jpeg");
                 video.Thumbnails.Add(videoThumbnail);
-                videoThumbnail.Insert();
+                GenerateAndUploadThumbnails(video, localVideoDir, 1);
                 UploadOriginalVideo(video, localVideoDir);
                 video.UpdateOriginalDir();
                 video.VideoData.CompressedFileDir = video.VideoData.OriginalFileDir;
