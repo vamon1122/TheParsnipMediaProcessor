@@ -761,20 +761,46 @@ namespace ParsnipMediaProcessor
                 var thumbnailIdentifier = MediaId.NewMediaId().ToString();
                 var localThumbnailDir = $"{originalsDir}\\{video.Id}_{thumbnailIdentifier}.jpeg";
 
-                using (var client = new WebClient())
+                Int64 remoteSize = 0;
+                Int64 localSize = 0;
+                if (grabbedMedia720 != null)
                 {
-                    if (grabbedMedia720 != null)
+                    using (var client = new WebClient())
+                    {
                         client.DownloadFile(grabbedMedia720.ResourceUri, localVideoDir);
-                    else if (grabbedMedia360 != null)
+                        localSize = new System.IO.FileInfo(localVideoDir).Length;
+                        //DO NOT SWAP!!!
+                        //Request times out if size is grabbed before downloading
+                        //This still applies if you use a separate WebClient
+                        client.OpenRead(grabbedMedia720.ResourceUri);
+                        remoteSize = Convert.ToInt64(client.ResponseHeaders["Content-Length"]);
+                    }
+                }
+                if (grabbedMedia720 == null && grabbedMedia360 != null || localSize != remoteSize)
+                {
+                    using (var client = new WebClient())
+                    {
                         client.DownloadFile(grabbedMedia360.ResourceUri, localVideoDir);
-                    else
-                        throw new Exception();
-
-                    try
+                        localSize = new System.IO.FileInfo(localVideoDir).Length;
+                        //DO NOT SWAP!!!
+                        //Request times out if size is grabbed before downloading
+                        //This still applies if you use a separate WebClient
+                        client.OpenRead(grabbedMedia360.ResourceUri);
+                        remoteSize = Convert.ToInt64(client.ResponseHeaders["Content-Length"]);
+                    }
+                }
+                if (!File.Exists(localVideoDir) || localSize != remoteSize)
+                    throw new Exception();
+                try
+                {
+                    using (var client = new WebClient())
                     {
                         client.DownloadFile(grabbedImageMaxRes.ResourceUri, $"{localThumbnailDir}");
                     }
-                    catch
+                }
+                catch
+                {
+                    using (var client = new WebClient())
                     {
                         client.DownloadFile(grabbedImageHQ.ResourceUri, $"{localThumbnailDir}");
                     }
