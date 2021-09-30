@@ -747,6 +747,11 @@ namespace ParsnipMediaProcessor
                 .Build();
 
                 var result = await grabber.GrabAsync(new Uri($"https://www.youtube.com/watch?v={video.DataId}"));
+                if (string.IsNullOrWhiteSpace(Video.Select(video.Id).Title))
+                {
+                    video.Title = result.Title;
+                    video.Update();
+                }
                 var images = result.Resources<GrabbedImage>();
                 var videos = result.Resources<GrabbedMedia>();
                 var grabbedImageMaxRes = images.Single(x => x.ResourceUri.ToString().Contains("maxresdefault"));
