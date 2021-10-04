@@ -724,7 +724,7 @@ namespace ParsnipMediaProcessor
 
             try
             {
-                video.Status = MediaStatus.Processing;
+                video.Status = MediaStatus.Scraping;
                 video.UpdateMetadata();
 
                 var originalsDir = $"{RelativeLocalThumbnailsDir}\\{video.Id}\\AutoGen\\Originals";
@@ -761,6 +761,10 @@ namespace ParsnipMediaProcessor
                 }
                 if(update)
                     temp.Update();
+
+                video.Status = MediaStatus.Processing;
+                video.UpdateMetadata();
+
                 var images = result.Resources<GrabbedImage>();
                 var videos = result.Resources<GrabbedMedia>();
                 var grabbedImageMaxRes = images.Single(x => x.ResourceUri.ToString().Contains("maxresdefault"));
