@@ -73,11 +73,11 @@
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="SharpGrabber, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpGrabber.2.0.0\lib\netstandard2.0\SharpGrabber.dll</HintPath>
+    <Reference Include="SharpGrabber, Version=2.1.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\SharpGrabber.2.1.0\lib\netstandard2.0\SharpGrabber.dll</HintPath>
     </Reference>
-    <Reference Include="SharpGrabber.YouTube, Version=1.1.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpGrabber.YouTube.1.1.0\lib\netstandard2.0\SharpGrabber.YouTube.dll</HintPath>
+    <Reference Include="SharpGrabber.YouTube, Version=1.2.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\SharpGrabber.YouTube.1.2.0\lib\netstandard2.0\SharpGrabber.YouTube.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
