@@ -25,6 +25,7 @@ namespace ParsnipMediaProcessor
         private static readonly NetworkCredential FtpCredentials = new NetworkCredential(ConfigurationManager.AppSettings["FtpUsername"], ConfigurationManager.AppSettings["FtpPassword"]);
         private static readonly short NumberOfGeneratedThumbnails = Convert.ToInt16(ConfigurationManager.AppSettings["NumberOfGeneratedThumbnails"]);
         private static readonly int MaxShortSide = Convert.ToInt16(ConfigurationManager.AppSettings["MaxShortSide"]);
+        private static readonly short MaxFramerate = Convert.ToInt16(ConfigurationManager.AppSettings["MaxFramerate"]);
         private static readonly short CompressionLevel = Convert.ToInt16(ConfigurationManager.AppSettings["CompressionLevel"]);
         private static readonly string RemoteOriginalVideosDir = ConfigurationManager.AppSettings["RemoteOriginalsDir"];
         private static readonly string RemoteCompressedVideosDir = ConfigurationManager.AppSettings["RemoteCompressedDir"];
@@ -171,10 +172,12 @@ namespace ParsnipMediaProcessor
 
             var compressedFileWidth = video.VideoData.XScale * compressedScale;
             var compressedFileHeight = video.VideoData.YScale * compressedScale;
+            var compressedFileFramerate = video.VideoData.Framerate;
+            while (compressedFileFramerate > MaxFramerate) compressedFileFramerate /= 2;
 
             Process process = new Process();
             process.StartInfo.FileName = "CompressAuto.bat";
-            process.StartInfo.Arguments = $"{originalFileDir} {compressedFileName} {CompressedFileExtension} {compressedFileWidth} {compressedFileHeight} {CompressionLevel}";
+            process.StartInfo.Arguments = $"{originalFileDir} {compressedFileName} {CompressedFileExtension} {compressedFileWidth} {compressedFileHeight} {CompressionLevel} {compressedFileFramerate}";
             process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
             process.Start();
             process.WaitForExit();
@@ -651,6 +654,8 @@ namespace ParsnipMediaProcessor
                 video.VideoData.YScale = Convert.ToInt16(video.VideoData.Height / scale);
                 video.VideoData.Duration = TimeSpan.FromSeconds(Math.Floor(Convert.ToDouble(
                             output.ToString().Split(' ').Where(x => x.Contains("duration=")).First().Split('=').Last()) * 1000) / 1000);
+                var fractionalFramerate = output.ToString().Split(' ').Where(x => x.Contains("avg_frame_rate=")).First().Split('=').Last().Replace("\n", string.Empty).Split('/');
+                video.VideoData.Framerate = Convert.ToDecimal(fractionalFramerate[0]) / Convert.ToDecimal(fractionalFramerate[1]);
 
                 return true;
             }
