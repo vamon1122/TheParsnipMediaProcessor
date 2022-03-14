@@ -27,6 +27,7 @@ namespace ParsnipMediaProcessor
         private static readonly int MaxShortSide = Convert.ToInt16(ConfigurationManager.AppSettings["MaxShortSide"]);
         private static readonly short MaxFramerate = Convert.ToInt16(ConfigurationManager.AppSettings["MaxFramerate"]);
         private static readonly short CompressionLevel = Convert.ToInt16(ConfigurationManager.AppSettings["CompressionLevel"]);
+        private static readonly short Bitrate = Convert.ToInt16(ConfigurationManager.AppSettings["Bitrate"]);
         private static readonly string RemoteOriginalVideosDir = ConfigurationManager.AppSettings["RemoteOriginalsDir"];
         private static readonly string RemoteCompressedVideosDir = ConfigurationManager.AppSettings["RemoteCompressedDir"];
         private static readonly string RemoteThumbnailsDir = ConfigurationManager.AppSettings["RemoteThumbnailsDir"];
@@ -177,7 +178,7 @@ namespace ParsnipMediaProcessor
 
             Process process = new Process();
             process.StartInfo.FileName = "CompressAuto.bat";
-            process.StartInfo.Arguments = $"{originalFileDir} {compressedFileName} {CompressedFileExtension} {compressedFileWidth} {compressedFileHeight} {CompressionLevel} {compressedFileFramerate}";
+            process.StartInfo.Arguments = $"{originalFileDir} {compressedFileName} {CompressedFileExtension} {compressedFileWidth} {compressedFileHeight} {CompressionLevel} {compressedFileFramerate} {Bitrate} {Bitrate / 2}";
             process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
             process.Start();
             process.WaitForExit();
