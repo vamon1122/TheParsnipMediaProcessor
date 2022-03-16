@@ -655,8 +655,16 @@ namespace ParsnipMediaProcessor
                 video.VideoData.YScale = Convert.ToInt16(video.VideoData.Height / scale);
                 video.VideoData.Duration = TimeSpan.FromSeconds(Math.Floor(Convert.ToDouble(
                             output.ToString().Split(' ').Where(x => x.Contains("duration=")).First().Split('=').Last()) * 1000) / 1000);
-                var fractionalFramerate = output.ToString().Split(' ').Where(x => x.Contains("avg_frame_rate=")).First().Split('=').Last().Replace("\n", string.Empty).Split('/');
-                video.VideoData.Framerate = Convert.ToDecimal(fractionalFramerate[0]) / Convert.ToDecimal(fractionalFramerate[1]);
+                var framerateOutputs = output.ToString().Split(' ').Where(x => x.Contains("avg_frame_rate=")).ToList();
+                foreach (string framerateOutput in framerateOutputs)
+                {
+                    var fractionalFramerate = framerateOutput.Replace("\n", string.Empty).Split('=').Last().Split('/');
+                    var numerator = Convert.ToDecimal(fractionalFramerate[0]);
+                    var denominator = Convert.ToDecimal(fractionalFramerate[1]);
+                    if (numerator == 0 || denominator == 0) continue;
+                    video.VideoData.Framerate = numerator/denominator;
+                    break;
+                }
 
                 return true;
             }
