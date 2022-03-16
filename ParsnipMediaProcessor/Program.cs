@@ -174,7 +174,7 @@ namespace ParsnipMediaProcessor
             var compressedFileWidth = video.VideoData.XScale * compressedScale;
             var compressedFileHeight = video.VideoData.YScale * compressedScale;
             var compressedFileFramerate = video.VideoData.Framerate;
-            while (compressedFileFramerate > MaxFramerate) compressedFileFramerate /= 2;
+            while (compressedFileFramerate.AsDecimal > MaxFramerate) compressedFileFramerate.DivideBy(2);
 
             Process process = new Process();
             process.StartInfo.FileName = "CompressAuto.bat";
@@ -658,11 +658,14 @@ namespace ParsnipMediaProcessor
                 var framerateOutputs = output.ToString().Split(' ').Where(x => x.Contains("avg_frame_rate=")).ToList();
                 foreach (string framerateOutput in framerateOutputs)
                 {
-                    var fractionalFramerate = framerateOutput.Replace("\n", string.Empty).Split('=').Last().Split('/');
-                    var numerator = Convert.ToDecimal(fractionalFramerate[0]);
-                    var denominator = Convert.ToDecimal(fractionalFramerate[1]);
-                    if (numerator == 0 || denominator == 0) continue;
-                    video.VideoData.Framerate = numerator/denominator;
+                    try
+                    {
+                        video.VideoData.Framerate = (Fraction)framerateOutput.Replace("\n", string.Empty).Split('=').Last();
+                    }
+                    catch (DivideByZeroException)
+                    {
+                        continue;
+                    }
                     break;
                 }
 
